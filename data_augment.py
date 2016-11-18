@@ -74,11 +74,12 @@ def add_noise(xyz, strength=0.25):
 		noise[:,i] += np.random.uniform(-std[i], std[i], xyz.shape[0])
 	return xyz + noise  
 	
-def get_augmented_data(data, mode="baseline"):
+def get_augmented_data(data):
 	with h5py.File("input/" + data + "_small.h5", "r") as hf:
 		size = len(hf.keys())
 
-		features = []
+		baseline_features = []
+		convolutional_features = []
 		labels = []
 		for i in range(size):
 			if i % 200 == 0:
@@ -89,12 +90,8 @@ def get_augmented_data(data, mode="baseline"):
 			
 			voxelgrid = VoxelGrid(original_cloud, x_y_z=[16, 16, 16])
 
-			if mode == "baseline":
-				vector = voxelgrid.vector.reshape(-1) / np.max(voxelgrid.vector)
-			else:
-				vector = voxelgrid.vector.reshape(16,16,16) / np.max(voxelgrid.vector)
-			
-			features.append(vector)
+			baseline_features.append(voxelgrid.vector / np.max(voxelgrid.vector))
+			convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(16,16,16), 3) / np.max(voxelgrid.vector))
 			labels.append(label)
 
 			s_x = np.random.normal(0, 90)
@@ -107,36 +104,35 @@ def get_augmented_data(data, mode="baseline"):
 
 			voxelgrid = VoxelGrid(cloud, x_y_z=[16, 16, 16])
 
-			if mode == "baseline":
-				vector = voxelgrid.vector.reshape(-1) / np.max(voxelgrid.vector)
-			else:
-				vector = voxelgrid.vector.reshape(16,16,16) / np.max(voxelgrid.vector)
-			
-			features.append(vector)
+			baseline_features.append(voxelgrid.vector / np.max(voxelgrid.vector))
+			convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(16,16,16), 3) / np.max(voxelgrid.vector))
 			labels.append(label)
 			
 		print("[DONE]")
 
-	return np.array(features), np.array(labels)
+	return np.array(baseline_features), np.array(convolutional_features), np.array(labels)
 
-modes = ["baseline", "convolution"]
+X_train_baseline, X_train_convolutional, y_train = get_augmented_data("train")
+X_valid_baseline, X_valid_convolutional, y_valid = get_augmented_data("valid")
+X_test_baseline,  X_test_convolutional,  y_test  = get_augmented_data("test")
 
-for mode in modes:
+save = True
 
-	X_train, y_train = get_augmented_data("train", mode)
-	X_valid, y_valid = get_augmented_data("valid", mode)
-	X_test,  y_test  = get_augmented_data("test",  mode)
-
-	save = True
-
-	if save:
-			with h5py.File("input/" + mode + "_augmented_data.h5", 'w') as h5f:
-				h5f.create_dataset('X_train', data=X_train)
-				h5f.create_dataset('y_train', data=y_train)
-				h5f.create_dataset('X_valid', data=X_valid)
-				h5f.create_dataset('y_valid', data=y_valid)
-				h5f.create_dataset('X_test',  data=X_test)
-				h5f.create_dataset('y_test',  data=y_test)
+if save:
+	with h5py.File("input/baseline_augmented_data.h5", 'w') as h5f:
+		h5f.create_dataset('X_train', data=X_train_baseline)
+		h5f.create_dataset('y_train', data=y_train)
+		h5f.create_dataset('X_valid', data=X_valid_baseline)
+		h5f.create_dataset('y_valid', data=y_valid)
+		h5f.create_dataset('X_test',  data=X_test_baseline)
+		h5f.create_dataset('y_test',  data=y_test)
+	with h5py.File("input/convolution_augmented_data.h5", 'w') as h5f:
+		h5f.create_dataset('X_train', data=X_train_convolutional)
+		h5f.create_dataset('y_train', data=y_train)
+		h5f.create_dataset('X_valid', data=X_valid_convolutional)
+		h5f.create_dataset('y_valid', data=y_valid)
+		h5f.create_dataset('X_test',  data=X_test_convolutional)
+		h5f.create_dataset('y_test',  data=y_test)	
 
 
 

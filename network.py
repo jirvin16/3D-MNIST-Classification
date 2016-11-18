@@ -16,6 +16,8 @@ from pprint import pprint
 class ConvNN(object):
 	def __init__(self, config, sess):
 
+		self.debug = None
+
 		self.sess = sess
 
 		# Training network details
@@ -41,9 +43,7 @@ class ConvNN(object):
 		self.log_directory 		   = os.path.join(self.model_directory, "logs")
 		
 		# Dimensions and initialization parameters
-		# self.init_min            = -0.1
-		# self.init_max 		   = 0.1
-		self.std 				   = 0.1
+		self.std 				   = 0.01
 		self.hidden_dim 	       = config.hidden_dim
 		self.embedding_dim 		   = 4096
 		self.num_layers 	       = config.num_layers
@@ -56,13 +56,12 @@ class ConvNN(object):
 		else:
 			self.dim 			   = round(self.embedding_dim ** (1/3))
 			self.filter_dim 	   = 5
-			self.out_channels 	   = 32
+			self.out_channels 	   = config.out_channels
 			self.stride_size 	   = 1
 			self.pool_size 		   = 2
 			self.pool_stride_size  = 2
-			self.X_batch 		   = tf.placeholder(tf.float32, shape=[None, self.dim, self.dim, self.dim, 1])
-			self.optimizer		   = "Adam"
-			self.init_learning_rate= 1e-4
+			self.X_batch 		   = tf.placeholder(tf.float32, shape=[None, self.dim, self.dim, self.dim, 1], name="X_batch")
+			self.optimizer         = "SGD"
 		
 		self.y_batch 	       	   = tf.placeholder(tf.int32,   shape=None, name="y_batch")
 		self.dropout_var 	       = tf.placeholder(tf.float32, name="dropout_var")
@@ -96,10 +95,10 @@ class ConvNN(object):
 
 		# Data paths
 		if not self.convolution:
-			mode = "baseline"
+			self.mode = "baseline"
 		else:
-			mode = "convolution"
-		with h5py.File("input/" + mode + "_augmented_data.h5") as hf:
+			self.mode = "convolution"
+		with h5py.File("input/" + self.mode + "_augmented_data.h5") as hf:
 			self.X_train = hf["X_train"][:]
 			self.y_train = hf["y_train"][:]
 			self.X_test  = hf["X_test"][:]
@@ -120,27 +119,38 @@ class ConvNN(object):
 												 initializer=W_initializer)
 			b_conv1 		   = tf.get_variable("b_conv1", shape=self.out_channels,
 												 initializer=b_initializer)
-			W_conv2  		   = tf.get_variable("W_conv2", shape=[self.filter_dim, self.filter_dim, self.filter_dim, self.out_channels, self.out_channels*2],
-												 initializer=W_initializer)
-			b_conv2 		   = tf.get_variable("b_conv2", shape=self.out_channels*2,
-												 initializer=b_initializer)
-
 			h_conv1			   = tf.nn.relu(tf.nn.conv3d(self.X_batch, W_conv1, 
 														 strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv1)
 			h_pool1 		   = tf.nn.max_pool3d(h_conv1, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
 												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
-
-			h_conv2		   = tf.nn.relu(tf.nn.conv3d(h_pool1, W_conv2, 
+			output             = h_pool1
+			
+			if self.num_layers >= 2:
+				W_conv2  	   = tf.get_variable("W_conv2", shape=[self.filter_dim, self.filter_dim, self.filter_dim, self.out_channels, self.out_channels*2],
+												 initializer=W_initializer)
+				b_conv2 	   = tf.get_variable("b_conv2", shape=self.out_channels*2,
+												 initializer=b_initializer)
+				h_conv2		   = tf.nn.relu(tf.nn.conv3d(h_pool1, W_conv2, 
 														 strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv2)
-			h_pool2 		   = tf.nn.max_pool3d(h_conv2, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
+				h_pool2 	   = tf.nn.max_pool3d(h_conv2, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
 												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
+				output 		   = h_pool2
 
-			shape 			 = h_pool2.get_shape().as_list()
+			if self.num_layers >= 3:
+				W_conv3  	   = tf.get_variable("W_conv3", shape=[self.filter_dim, self.filter_dim, self.filter_dim, self.out_channels*2, self.out_channels*2],
+												 initializer=W_initializer)
+				b_conv3 	   = tf.get_variable("b_conv3", shape=self.out_channels*2,
+												 initializer=b_initializer)
+				h_conv3		   = tf.nn.relu(tf.nn.conv3d(h_pool2, W_conv3, 
+													     strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv3)
+				h_pool3 	   = tf.nn.max_pool3d(h_conv3, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
+												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
+				output 		   = h_pool3
+
+			shape 			   = output.get_shape().as_list()
 			self.embedding_dim = np.prod(shape[1:])
-			projection_input   = tf.reshape(h_pool2, [-1, self.embedding_dim])
-			# shape 			   = h_pool1.get_shape().as_list()
-			# self.embedding_dim = np.prod(shape[1:])
-			# projection_input   = tf.reshape(h_pool1, [-1, self.embedding_dim])
+			projection_input   = tf.reshape(output, [-1, self.embedding_dim])
+		self.debug = projection_input
 
 		W_projection1     = tf.get_variable("W_projection1", shape=[self.embedding_dim, self.hidden_dim],
 											initializer=W_initializer)
@@ -187,16 +197,22 @@ class ConvNN(object):
 		i 					= 0
 		previous_train_loss = float("inf")
 		valid_loss 			= float("inf")
+		best_valid_loss     = float("inf")
 		for epoch in xrange(self.epochs):
 
 			train_loss  = 0.0
 			num_batches = 0.0
 			for X_batch, y_batch in data_iterator(self.X_train, self.y_train, self.batch_size, self.convolution):
 
-				# np.set_printoptions(threshold='nan')
 				feed = {self.X_batch: X_batch, self.y_batch: y_batch, self.dropout_var: self.dropout}
 
-				_, batch_loss, summary = self.sess.run([self.optim, self.loss, merged_sum], feed)
+				_, batch_loss, summary, debug = self.sess.run([self.optim, self.loss, merged_sum, self.debug], feed)
+
+				# np.set_printoptions(threshold='nan')
+				# with open("test_" + self.mode + ".txt", 'w') as f:
+				# 	print(debug.shape, file=f)
+				# 	print(debug, file=f)
+				# sys.exit(1)
 
 				train_loss += batch_loss
 				
@@ -226,14 +242,15 @@ class ConvNN(object):
 				# 	break
 
 			# Adaptive learning rate
-			# if previous_train_loss <= train_loss + 1e-1:
-			# 	self.current_learning_rate /= 2.
+			if previous_train_loss <= train_loss + 1e-1:
+				self.current_learning_rate /= 2.
 
 			# save model after validation check, only if model improves on validation set
-			if (epoch % self.save_every == 0 or epoch == self.epochs - 1) and valid_loss <= previous_valid_loss:
+			if (epoch % self.save_every == 0 or epoch == self.epochs - 1) and valid_loss <= best_valid_loss:
 				self.saver.save(self.sess,
 								os.path.join(self.checkpoint_directory, "MemN2N.model")
 								)
+				best_valid_loss = valid_loss
 
 
 	def test(self):

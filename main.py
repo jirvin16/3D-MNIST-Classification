@@ -21,9 +21,10 @@ flags.DEFINE_float("grad_max_norm", 5., "gradient max norm [1]")
 flags.DEFINE_float("dropout", 0.2, "Dropout [0.2]")
 flags.DEFINE_integer("mode", 0, "0 for training, 1 for testing [0]")
 flags.DEFINE_boolean("validate", True, "True for cross validation, False otherwise [True]")
-flags.DEFINE_integer("save_every", 5, "Save every [5] epochs")
+flags.DEFINE_integer("save_every", 1, "Save every [1] epochs")
 flags.DEFINE_string("model_name", "out", "model name for prefix to checkpoint file [unnamed]")
 flags.DEFINE_boolean("convolution", False, "True if use convolution, False if regular network [False]")
+flags.DEFINE_integer("out_channels", 32, "Number of out channels in filter [32]")
 
 FLAGS = flags.FLAGS
 
