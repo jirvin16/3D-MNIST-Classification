@@ -1,6 +1,6 @@
 import numpy as np
 
-def data_iterator(X, y, batch_size, convolution):
+def data_iterator(X, y, batch_size):
 	assert X.shape[0] == y.shape[0]
 	index = 0
 	while index < X.shape[0]:

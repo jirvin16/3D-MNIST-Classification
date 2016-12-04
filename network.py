@@ -12,6 +12,9 @@ import time
 import sys
 from pprint import pprint
 
+def leaky_relu(x, alpha=0.1):
+	return tf.maximum(alpha*x, x)
+
 
 class ConvNN(object):
 	def __init__(self, config, sess):
@@ -23,11 +26,11 @@ class ConvNN(object):
 		# Training network details
 		self.convolution 		   = config.convolution
 		self.batch_size            = config.batch_size
-		self.max_size              = config.max_size
 		self.epochs                = config.epochs
-		self.current_learning_rate = config.init_learning_rate
 		self.grad_max_norm 		   = config.grad_max_norm
 		self.dropout 			   = config.dropout
+		self.optimizer 		  	   = config.optimizer
+		self.current_learning_rate = 1 if self.optimizer == "SGD" else 0.001 
 		self.loss                  = None
 		self.optim 				   = None
 		self.logits 			   = None
@@ -52,16 +55,14 @@ class ConvNN(object):
 		# Model placeholders
 		if not self.convolution:
 			self.X_batch 	       = tf.placeholder(tf.float32, shape=[None, self.embedding_dim], name="X_batch")
-			self.optimizer 		   = "SGD"
 		else:
 			self.dim 			   = round(self.embedding_dim ** (1/3))
 			self.filter_dim 	   = 5
 			self.out_channels 	   = config.out_channels
-			self.stride_size 	   = 1
+			self.stride_size 	   = 2
 			self.pool_size 		   = 2
-			self.pool_stride_size  = 2
+			self.pool_stride_size  = 1
 			self.X_batch 		   = tf.placeholder(tf.float32, shape=[None, self.dim, self.dim, self.dim, 1], name="X_batch")
-			self.optimizer         = "SGD"
 		
 		self.y_batch 	       	   = tf.placeholder(tf.int32,   shape=None, name="y_batch")
 		self.dropout_var 	       = tf.placeholder(tf.float32, name="dropout_var")
@@ -109,69 +110,75 @@ class ConvNN(object):
 
 
 	def build_model(self):
-		W_initializer 	  = tf.truncated_normal_initializer(stddev=self.std)
-		b_initializer     = tf.constant_initializer(0.1, dtype=tf.float32)
+		W_initializer 	 = tf.truncated_normal_initializer(stddev=self.std)
+		b_initializer    = tf.constant_initializer(0.1, dtype=tf.float32)
 
-		projection_input  = self.X_batch
+		layer_input = self.X_batch
 
 		if self.convolution:
-			W_conv1  		   = tf.get_variable("W_conv1", shape=[self.filter_dim, self.filter_dim, self.filter_dim, 1, self.out_channels],
-												 initializer=W_initializer)
-			b_conv1 		   = tf.get_variable("b_conv1", shape=self.out_channels,
-												 initializer=b_initializer)
-			h_conv1			   = tf.nn.relu(tf.nn.conv3d(self.X_batch, W_conv1, 
-														 strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv1)
-			h_pool1 		   = tf.nn.max_pool3d(h_conv1, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
-												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
-			output             = h_pool1
-			
-			if self.num_layers >= 2:
-				W_conv2  	   = tf.get_variable("W_conv2", shape=[self.filter_dim, self.filter_dim, self.filter_dim, self.out_channels, self.out_channels*2],
-												 initializer=W_initializer)
-				b_conv2 	   = tf.get_variable("b_conv2", shape=self.out_channels*2,
-												 initializer=b_initializer)
-				h_conv2		   = tf.nn.relu(tf.nn.conv3d(h_pool1, W_conv2, 
-														 strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv2)
-				h_pool2 	   = tf.nn.max_pool3d(h_conv2, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
-												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
-				output 		   = h_pool2
 
-			if self.num_layers >= 3:
-				W_conv3  	   = tf.get_variable("W_conv3", shape=[self.filter_dim, self.filter_dim, self.filter_dim, self.out_channels*2, self.out_channels*2],
-												 initializer=W_initializer)
-				b_conv3 	   = tf.get_variable("b_conv3", shape=self.out_channels*2,
-												 initializer=b_initializer)
-				h_conv3		   = tf.nn.relu(tf.nn.conv3d(h_pool2, W_conv3, 
-													     strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv3)
-				h_pool3 	   = tf.nn.max_pool3d(h_conv3, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
-												  strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
-				output 		   = h_pool3
+			# layer = 0
+			# use_projection = True
 
-			shape 			   = output.get_shape().as_list()
-			self.embedding_dim = np.prod(shape[1:])
-			projection_input   = tf.reshape(output, [-1, self.embedding_dim])
-		self.debug = projection_input
+			W_conv  		     = tf.get_variable("W_conv", shape=[self.filter_dim, self.filter_dim, self.filter_dim, 1, self.out_channels],
+												   initializer=W_initializer)
+			b_conv 		     	 = tf.get_variable("b_conv", shape=self.out_channels,
+												   initializer=b_initializer)
+			# h_conv			     = tf.nn.relu(tf.nn.conv3d(layer_input, W_conv, 
+			h_conv			     = leaky_relu(tf.nn.conv3d(layer_input, W_conv, 
+														   strides=[1, self.stride_size, self.stride_size, self.stride_size, 1], padding='SAME') + b_conv)
+			h_pool 		     	 = tf.nn.max_pool3d(h_conv, ksize=[1, self.pool_size, self.pool_size, self.pool_size, 1],
+												    strides=[1, self.pool_stride_size, self.pool_stride_size, self.pool_stride_size, 1], padding='SAME')
+			# conv_output_dim 	 = h_pool.get_shape().as_list()
+			conv_output   	     = tf.contrib.layers.flatten(h_pool)
+			# conv_output_dim1d 	 = conv_output.get_shape().as_list()[1]
+			# residual 			 = tf.contrib.layers.flatten(layer_input)
+			# residual_dim 		 = residual.get_shape().as_list()[1]
 
-		W_projection1     = tf.get_variable("W_projection1", shape=[self.embedding_dim, self.hidden_dim],
+			# if conv_output_dim1d != self.embedding_dim:
+			# 	if use_projection:
+			# 		W_proj1 		 = tf.get_variable("W_proj1", shape=[residual_dim, conv_output_dim1d],
+			# 											   initializer=W_initializer)
+			# 		hidden_input 	 = tf.matmul(residual, W_proj1) + conv_output
+			# 	else:
+			# 		hidden_input 	 = tf.pad(residual, [[0,0], [0, conv_output_dim1d - self.embedding_dim]], "CONSTANT") + conv_output
+			# else:
+			# 	hidden_input 		 = residual + conv_output
+			hidden_input 		 = conv_output
+
+			# if layer + 1 < self.num_layers:
+			# 	layer_input 	 = tf.reshape(hidden_input, [-1] + conv_output_dim[1:])
+
+
+
+		else:	
+			hidden_input = self.X_batch
+		
+		hidden_input_dim = hidden_input.get_shape().as_list()[1]
+
+		# Go straight into number of classes if using convolutional network? 
+		# ie, move hidden layer into above else block (and move matrix multiply below into else)
+		W_hidden  = tf.get_variable("W_hidden", shape=[hidden_input_dim, self.hidden_dim],
 											initializer=W_initializer)
-		b_projection1     = tf.get_variable("b_projection1", shape=self.hidden_dim,
+		b_hidden  = tf.get_variable("b_hidden", shape=self.hidden_dim,
 											initializer=b_initializer)
-		W_projection2     = tf.get_variable("W_projection2", shape=[self.hidden_dim, self.num_classes],
+		W_output  = tf.get_variable("W_output", shape=[self.hidden_dim, self.num_classes],
 											initializer=W_initializer)
-		b_projection2     = tf.get_variable("b_projection2", shape=self.num_classes,
+		b_output  = tf.get_variable("b_output", shape=self.num_classes,
 											initializer=b_initializer)
 
-		# self.logits       = tf.matmul(tf.nn.dropout(tf.nn.relu(tf.matmul(projection_input, W_projection1) + b_projection1), self.dropout_var),
-		# 							  W_projection2) + b_projection2
-		self.logits       = tf.matmul(tf.nn.relu(tf.matmul(projection_input, W_projection1) + b_projection1),
-									  W_projection2) + b_projection2
+		# self.logits       = tf.matmul(tf.nn.dropout(tf.nn.relu(tf.matmul(hidden_input, W_hidden) + b_hidden), self.dropout_var),
+		# 							  W_output) + b_output
+		# self.logits    = tf.matmul(tf.nn.relu(tf.matmul(hidden_input, W_hidden) + b_hidden),
+		self.logits    = tf.matmul(leaky_relu(tf.matmul(hidden_input, W_hidden) + b_hidden),
+									  W_output) + b_output
 
-		batch_loss 		  = tf.nn.sparse_softmax_cross_entropy_with_logits(self.logits, self.y_batch)
-		self.loss 		  = tf.reduce_mean(batch_loss)
+		batch_loss 	   = tf.nn.sparse_softmax_cross_entropy_with_logits(self.logits, self.y_batch)
+		self.loss 	   = tf.reduce_mean(batch_loss)
 
 		# only optimize if training
 		if not self.is_test:
-			self.optim    = tf.contrib.layers.optimize_loss(self.loss, None, self.current_learning_rate, self.optimizer, clip_gradients=self.grad_max_norm, 
+			self.optim = tf.contrib.layers.optimize_loss(self.loss, None, self.current_learning_rate, self.optimizer, clip_gradients=self.grad_max_norm, 
 														 summaries=["learning_rate", "gradient_norm", "loss", "gradients"])
 		
 		self.sess.run(tf.initialize_all_variables())
@@ -202,17 +209,11 @@ class ConvNN(object):
 
 			train_loss  = 0.0
 			num_batches = 0.0
-			for X_batch, y_batch in data_iterator(self.X_train, self.y_train, self.batch_size, self.convolution):
+			for X_batch, y_batch in data_iterator(self.X_train, self.y_train, self.batch_size):
 
 				feed = {self.X_batch: X_batch, self.y_batch: y_batch, self.dropout_var: self.dropout}
 
-				_, batch_loss, summary, debug = self.sess.run([self.optim, self.loss, merged_sum, self.debug], feed)
-
-				# np.set_printoptions(threshold='nan')
-				# with open("test_" + self.mode + ".txt", 'w') as f:
-				# 	print(debug.shape, file=f)
-				# 	print(debug, file=f)
-				# sys.exit(1)
+				_, batch_loss, summary = self.sess.run([self.optim, self.loss, merged_sum], feed)
 
 				train_loss += batch_loss
 				
@@ -242,11 +243,11 @@ class ConvNN(object):
 				# 	break
 
 			# Adaptive learning rate
-			if previous_train_loss <= train_loss + 1e-1:
+			if self.optimizer != "Adagrad" and previous_train_loss <= train_loss + 1e-1:
 				self.current_learning_rate /= 2.
 
-			# save model after validation check, only if model improves on validation set
-			if (epoch % self.save_every == 0 or epoch == self.epochs - 1) and valid_loss <= best_valid_loss:
+			# save model after validation check
+			if (epoch % self.save_every == 0 or epoch >= self.epochs / 2) and valid_loss <= best_valid_loss:
 				self.saver.save(self.sess,
 								os.path.join(self.checkpoint_directory, "MemN2N.model")
 								)
@@ -263,7 +264,7 @@ class ConvNN(object):
 		num_batches = 0.0
 		num_correct = 0.0
 		num_examples = 0.0
-		for X_batch, y_batch in data_iterator(self.X_test, self.y_test, self.batch_size, self.convolution):
+		for X_batch, y_batch in data_iterator(self.X_test, self.y_test, self.batch_size):
 
 			feed = {self.X_batch: X_batch, self.y_batch: y_batch, self.dropout_var: 0.0}
 

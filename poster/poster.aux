@@ -1,0 +1,42 @@
+\relax 
+\providecommand\hyper@newdestlabel[2]{}
+\providecommand\HyperFirstAtBeginDocument{\AtBeginDocument}
+\HyperFirstAtBeginDocument{\ifx\hyper@anchor\@undefined
+\global\let\oldcontentsline\contentsline
+\gdef\contentsline#1#2#3#4{\oldcontentsline{#1}{#2}{#3}}
+\global\let\oldnewlabel\newlabel
+\gdef\newlabel#1#2{\newlabelxx{#1}#2}
+\gdef\newlabelxx#1#2#3#4#5#6{\oldnewlabel{#1}{{#2}{#3}}}
+\AtEndDocument{\ifx\hyper@anchor\@undefined
+\let\contentsline\oldcontentsline
+\let\newlabel\oldnewlabel
+\fi}
+\fi}
+\global\let\hyper@last\relax 
+\gdef\HyperFirstAtBeginDocument#1{#1}
+\providecommand\HyField@AuxAddToFields[1]{}
+\providecommand\HyField@AuxAddToCoFields[2]{}
+\@writefile{toc}{\beamer@endinputifotherversion {3.26pt}}
+\@writefile{nav}{\beamer@endinputifotherversion {3.26pt}}
+\@writefile{nav}{\headcommand {\slideentry {0}{0}{1}{1/1}{}{0}}}
+\@writefile{nav}{\headcommand {\beamer@framepages {1}{1}}}
+\providecommand*\caption@xref[2]{\@setref\relax\@undefined{#1}}
+\newlabel{voxel}{{1}{1}{Example of Occupancy Grid [1]. Each $(x,y,z)$ in the point cloud is assigned a single $(i,j,k)$ voxel. The image is then represented by a $N_x\times N_y\times N_z$ matrix where the $ijk$th entry contains the number of points assigned to that voxel.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {voxel}{1}}
+\newlabel{example}{{3}{1}{Example of an image split into 8 voxels along the $z$-axis (each color corresponds to a single voxel) [1]. The graph shows a count of points in each voxel in the $z$-dimension.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {example}{1}}
+\newlabel{augment}{{4}{1}{Example of rotation clockwise by $60^{\circ }$ along the $z$-axis [1]. The left panel shows a projection into the $x$ dimension (image axes are $z,y$ dimensions and levels are the $x$ dimension). The right panel shows the image rotated clockwise by $60^{\circ }$ in the $z$ dimension. The colors denote the number of points within a voxel.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {augment}{1}}
+\newlabel{3d_conv}{{5}{1}{3D Filter and Pooling operations on a simple $4\times 4\times 4$ image [4]. The $2\times 2\times 2$ cube on the right can be thought of as either the filter or the pool. This figure does not show the stride parameter - this is just the size of the shift of the filter or pool (a sliding window).\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {3d_conv}{1}}
+\newlabel{network}{{6}{1}{Basic network architecture. One convolutional layer, max pooling layer, fully connected layer, and last fully connected layer into the 10 classes, where a final softmax is performed. Cross entropy loss is used and trained in Tensorflow with an Adam optimizer.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {network}{1}}
+\newlabel{baselines}{{7}{1}{Summary of baseline results. ovr stands for \textit {one-versus-rest} ($10$ binary classifiers). In the SVM case, ovr is contrasted with a \textit {one-versus-one} scheme ($\binom {10}{2}=45$ binary classifiers). In the Logistic Regression case, ovr is contrasted with Multinomial Logistic Regression, which is softmax regression with cross-entropy loss. The best SVM, logistic regression, and neural network classifiers are bolded. The oracle is a vanilla convolutional neural network which uses the 2D image that was used to generate the 3D point clouds.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {baselines}{1}}
+\newlabel{results}{{8}{1}{Summary of results.\relax }{Doc-Start}{}}
+\@writefile{snm}{\beamer@slide {results}{1}}
+\@writefile{nav}{\headcommand {\beamer@partpages {1}{1}}}
+\@writefile{nav}{\headcommand {\beamer@subsectionpages {1}{1}}}
+\@writefile{nav}{\headcommand {\beamer@sectionpages {1}{1}}}
+\@writefile{nav}{\headcommand {\beamer@documentpages {1}}}
+\@writefile{nav}{\headcommand {\def \inserttotalframenumber {1}}}
