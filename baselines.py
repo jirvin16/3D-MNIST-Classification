@@ -8,16 +8,6 @@ from sklearn.svm import LinearSVC
 from sklearn.svm import SVC
 from sklearn.linear_model import LogisticRegression
 
-with h5py.File("input/baseline_augmented_data.h5") as hf:
-	X_train = hf["X_train"][:]
-	y_train = hf["y_train"][:]
-	X_valid = hf["X_valid"][:]
-	y_valid = hf["y_valid"][:]
-	X_test  = hf["X_test"][:]
-	y_test  = hf["y_test"][:]
-
-print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, X_test.shape, y_test.shape)
-
 def create_linear_svm(params):
 	if 'penalty' in params:
 		penalty = params['penalty']
@@ -55,33 +45,45 @@ def create_logistic_regression(params):
 		solver = 'liblinear'
 	return LogisticRegression(multi_class=multi_class, solver=solver)
 
-with open("score_baselines.txt", 'w') as outfile:
+for voxel_dim in [8, 16, 32]:
 
-	linear_params = [{}, {'penalty':'l1', 'dual': False}]
+	with h5py.File("input/final_data_{}.h5".format(voxel_dim)) as hf:
+		X_train = hf["X_train"][:]
+		y_train = hf["y_train"][:]
+		X_valid = hf["X_valid"][:]
+		y_valid = hf["y_valid"][:]
+		X_test  = hf["X_test"][:]
+		y_test  = hf["y_test"][:]
 
-	print("Linear SVM", file=outfile)
-	for param in linear_params:
-		print(param, file=outfile)
-		clf = create_linear_svm(param)
-		clf.fit(X_train, y_train)
-		print("Test Score: ", clf.score(X_test, y_test), file=outfile)
+	print(X_train.shape, y_train.shape, X_valid.shape, y_valid.shape, X_test.shape, y_test.shape)
 
-	params = [{}, {'decision_function_shape':'ovr', 'kernel': 'poly'}, {'decision_function_shape':'ovr', 'kernel': 'sigmoid'}]
+	with open("score_baselines_{}.txt".format(voxel_dim), 'w') as outfile:
 
-	print("Nonlinear SVM", file=outfile)
-	for param in params:
-		print(param, file=outfile)
-		clf = create_svm(param)
-		clf.fit(X_train, y_train)
-		print("Test Score: ", clf.score(X_test, y_test), file=outfile)
+		linear_params = [{}, {'penalty':'l1', 'dual': False}]
 
-	print("Logistic Regression", file=outfile)
-	log_params = [{}, {'multi_class':'multinomial', 'solver':'newton-cg'}]
-	for param in log_params:
-		print(param, file=outfile)
-		clf = create_logistic_regression(param)
-		clf.fit(X_train, y_train)
-		print("Test Score: ", clf.score(X_test, y_test), file=outfile)
+		print("Linear SVM", file=outfile)
+		for param in linear_params:
+			print(param, file=outfile)
+			clf = create_linear_svm(param)
+			clf.fit(X_train, y_train)
+			print("Test Score: ", clf.score(X_test, y_test), file=outfile)
+
+		params = [{}, {'decision_function_shape':'ovr', 'kernel': 'poly'}, {'decision_function_shape':'ovr', 'kernel': 'sigmoid'}]
+
+		print("Nonlinear SVM", file=outfile)
+		for param in params:
+			print(param, file=outfile)
+			clf = create_svm(param)
+			clf.fit(X_train, y_train)
+			print("Test Score: ", clf.score(X_test, y_test), file=outfile)
+
+		print("Logistic Regression", file=outfile)
+		log_params = [{}, {'multi_class':'multinomial', 'solver':'newton-cg'}]
+		for param in log_params:
+			print(param, file=outfile)
+			clf = create_logistic_regression(param)
+			clf.fit(X_train, y_train)
+			print("Test Score: ", clf.score(X_test, y_test), file=outfile)
 
 
 

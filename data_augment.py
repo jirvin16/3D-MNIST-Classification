@@ -73,14 +73,14 @@ def add_noise(xyz, strength=0.25):
 	for i in range(3):
 		noise[:,i] += np.random.uniform(-std[i], std[i], xyz.shape[0])
 	return xyz + noise  
-	
-def get_augmented_data(data):
+
+def get_augmented_data(data, voxel_dim):
+	voxel_dims = (voxel_dim, voxel_dim, voxel_dim)
+	baseline_features = []
+	convolutional_features = []
+	labels = []
 	with h5py.File("input/" + data + "_small.h5", "r") as hf:
 		size = len(hf.keys())
-
-		baseline_features = []
-		convolutional_features = []
-		labels = []
 		for i in range(size):
 			if i % 200 == 0:
 				print(i, "\t processed")
@@ -88,10 +88,10 @@ def get_augmented_data(data):
 			original_cloud = hf[str(i)]["points"][:]
 			label = hf[str(i)].attrs["label"]
 			
-			voxelgrid = VoxelGrid(original_cloud, x_y_z=[16, 16, 16])
+			voxelgrid = VoxelGrid(original_cloud, x_y_z=list(voxel_dims))
 
 			baseline_features.append(voxelgrid.vector / np.max(voxelgrid.vector))
-			convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(16,16,16), 3) / np.max(voxelgrid.vector))
+			# convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(voxel_dims), 3) / np.max(voxelgrid.vector))
 			labels.append(label)
 
 			s_x = np.random.normal(0, 90)
@@ -102,37 +102,52 @@ def get_augmented_data(data):
 
 			cloud = add_noise(cloud)
 
-			voxelgrid = VoxelGrid(cloud, x_y_z=[16, 16, 16])
+			voxelgrid = VoxelGrid(cloud, x_y_z=list(voxel_dims))
 
 			baseline_features.append(voxelgrid.vector / np.max(voxelgrid.vector))
-			convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(16,16,16), 3) / np.max(voxelgrid.vector))
+			# convolutional_features.append(np.expand_dims(voxelgrid.vector.reshape(voxel_dims), 3) / np.max(voxelgrid.vector))
 			labels.append(label)
 			
 		print("[DONE]")
 
-	return np.array(baseline_features), np.array(convolutional_features), np.array(labels)
+	if voxel_dim == 16:
+		t = 'float64'
+	else:
+		t = 'float32'
 
-X_train_baseline, X_train_convolutional, y_train = get_augmented_data("train")
-X_valid_baseline, X_valid_convolutional, y_valid = get_augmented_data("valid")
-X_test_baseline,  X_test_convolutional,  y_test  = get_augmented_data("test")
+	return np.array(baseline_features).astype(t), np.array(convolutional_features), np.array(labels).astype(t)
 
 save = True
 
 if save:
-	with h5py.File("input/baseline_augmented_data.h5", 'w') as h5f:
-		h5f.create_dataset('X_train', data=X_train_baseline)
-		h5f.create_dataset('y_train', data=y_train)
-		h5f.create_dataset('X_valid', data=X_valid_baseline)
-		h5f.create_dataset('y_valid', data=y_valid)
-		h5f.create_dataset('X_test',  data=X_test_baseline)
-		h5f.create_dataset('y_test',  data=y_test)
-	with h5py.File("input/convolution_augmented_data.h5", 'w') as h5f:
-		h5f.create_dataset('X_train', data=X_train_convolutional)
-		h5f.create_dataset('y_train', data=y_train)
-		h5f.create_dataset('X_valid', data=X_valid_convolutional)
-		h5f.create_dataset('y_valid', data=y_valid)
-		h5f.create_dataset('X_test',  data=X_test_convolutional)
-		h5f.create_dataset('y_test',  data=y_test)	
+	# voxel_sizes = [8, 16, 32]
+	voxel_sizes = [8, 32]
+	np.random.seed(42)
+	for voxel_dim in voxel_sizes:
+		X_train_baseline, _, y_train = get_augmented_data("train", voxel_dim)
+		X_valid_baseline, _, y_valid = get_augmented_data("valid", voxel_dim)
+		X_test_baseline,  _,  y_test  = get_augmented_data("test", voxel_dim)
+		with h5py.File("input/final_data_{}.h5".format(voxel_dim), 'w') as h5f:
+			h5f.create_dataset('X_train', data=X_train_baseline)
+			h5f.create_dataset('y_train', data=y_train)
+			h5f.create_dataset('X_valid', data=X_valid_baseline)
+			h5f.create_dataset('y_valid', data=y_valid)
+			h5f.create_dataset('X_test',  data=X_test_baseline)
+			h5f.create_dataset('y_test',  data=y_test)
+	# with h5py.File("input/baseline_augmented_data.h5", 'w') as h5f:
+	# 	h5f.create_dataset('X_train', data=X_train_baseline)
+	# 	h5f.create_dataset('y_train', data=y_train)
+	# 	h5f.create_dataset('X_valid', data=X_valid_baseline)
+	# 	h5f.create_dataset('y_valid', data=y_valid)
+	# 	h5f.create_dataset('X_test',  data=X_test_baseline)
+	# 	h5f.create_dataset('y_test',  data=y_test)
+	# with h5py.File("input/convolution_augmented_data.h5", 'w') as h5f:
+	# 	h5f.create_dataset('X_train', data=X_train_convolutional)
+	# 	h5f.create_dataset('y_train', data=y_train)
+	# 	h5f.create_dataset('X_valid', data=X_valid_convolutional)
+	# 	h5f.create_dataset('y_valid', data=y_valid)
+	# 	h5f.create_dataset('X_test',  data=X_test_convolutional)
+	# 	h5f.create_dataset('y_test',  data=y_test)	
 
 
 
