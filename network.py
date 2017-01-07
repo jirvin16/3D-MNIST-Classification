@@ -2,6 +2,7 @@ from __future__ import division
 from __future__ import print_function
 
 import tensorflow as tf
+from sklearn.metrics import confusion_matrix
 from data import data_iterator
 import numpy as np
 import h5py
@@ -12,6 +13,8 @@ import time
 import sys
 from pprint import pprint
 from collections import Counter
+import plot_confusion_matrix
+import matplotlib.pyplot as plt
 
 def leaky_relu(x, alpha=0.1):
 	return tf.maximum(alpha*x, x)
@@ -36,13 +39,17 @@ class ConvNN(object):
 		self.dropout 			   = config.dropout
 		self.optimizer 		  	   = config.optimizer
 		self.current_learning_rate = 1 if self.optimizer == "SGD" else 0.001 
+		self.hidden_nonlinearity   = config.hidden_nonlinearity.lower()
+		assert self.hidden_nonlinearity in ["leaky_relu", "relu", "sigmoid", "tanh", "elu", "none"]
 		self.loss                  = None
 		self.optim 				   = None
 		self.logits 			   = None
+		self.activations 		   = None
 
-		self.data_directory 	   = "input/"
+		self.data_directory 	   = "../data/"
 		self.voxel_dim  		   = config.voxel_dim
 		self.is_test 			   = config.mode == 1
+		self.visuals			   = config.mode == 2
 		self.validate 			   = config.validate
 		
 		self.save_every 		   = config.save_every
@@ -57,22 +64,22 @@ class ConvNN(object):
 		self.embedding_dim 		   = self.voxel_dim ** 3
 		self.num_layers 	       = config.num_layers
 		self.num_classes		   = 10
+		self.filter_dim 	   	   = 5
+		self.out_channels 	   	   = config.out_channels
+		self.stride_size 	   	   = 2
+		self.pool_size 		   	   = 2
+		self.pool_stride_size  	   = 1
 
 		# Model placeholders
 		if not self.convolution:
 			self.X_batch 	       = tf.placeholder(tf.float32, shape=[None, self.embedding_dim], name="X_batch")
 		else:
-			self.filter_dim 	   = 5
-			self.out_channels 	   = config.out_channels
-			self.stride_size 	   = 2
-			self.pool_size 		   = 2
-			self.pool_stride_size  = 1
 			self.X_batch 		   = tf.placeholder(tf.float32, shape=[None, self.voxel_dim, self.voxel_dim, self.voxel_dim, 1], name="X_batch")
 		
 		self.y_batch 	       	   = tf.placeholder(tf.int32,   shape=None, name="y_batch")
 		self.dropout_var 	       = tf.placeholder(tf.float32, name="dropout_var")
 		
-		if self.is_test:
+		if self.is_test or self.visuals:
 			self.dropout = 0
 
 		if not os.path.isdir(self.data_directory):
@@ -92,6 +99,8 @@ class ConvNN(object):
 
 		if self.is_test:
 			self.outfile = os.path.join(self.model_directory, "test.out")
+		elif self.visuals:
+			self.outfile = os.path.join(self.model_directory, "rotations.out")
 		else:
 			self.outfile = os.path.join(self.model_directory, "train.out")
 
@@ -99,9 +108,8 @@ class ConvNN(object):
 			pprint(config.__dict__['__flags'], stream=outfile)
 			outfile.flush()
 
-		# Data paths
-
-		with h5py.File("input/final_data_{}.h5".format(self.voxel_dim)) as hf:
+		# Data
+		with h5py.File(os.path.join(self.data_directory, "data.h5")) as hf:
 			self.X_train = hf["X_train"][:]
 			self.y_train = hf["y_train"][:]
 			self.X_test  = hf["X_test"][:]
@@ -111,7 +119,7 @@ class ConvNN(object):
 				self.y_test = hf["y_valid"][:]
 			if self.convolution:
 				self.X_train = np.expand_dims(self.X_train.reshape(self.X_train.shape[0], self.voxel_dim, self.voxel_dim, self.voxel_dim), 4)
-				self.X_test = np.expand_dims(self.X_test.reshape(self.X_test.shape[0], self.voxel_dim, self.voxel_dim, self.voxel_dim), 4)
+				self.X_test  = np.expand_dims(self.X_test.reshape(self.X_test.shape[0], self.voxel_dim, self.voxel_dim, self.voxel_dim), 4)
 
 
 	def build_model(self):
@@ -161,13 +169,25 @@ class ConvNN(object):
 									initializer=W_initializer)
 		b_output  = tf.get_variable("b_output", shape=self.num_classes,
 									initializer=b_initializer)
+		hidden_output = tf.matmul(hidden_input, W_hidden) + b_hidden
+		
+		if self.hidden_nonlinearity == "leaky_relu":
+			hidden_output = leaky_relu(hidden_output)
+		elif self.hidden_nonlinearity == "relu":
+			hidden_output = tf.nn.relu(hidden_output)
+		elif self.hidden_nonlinearity == "sigmoid":
+			hidden_output = tf.sigmoid(hidden_output)
+		elif self.hidden_nonlinearity == "tanh":
+			hidden_output = tf.tanh(hidden_output)
+		elif self.hidden_nonlinearity == "elu":
+			hidden_output = tf.nn.elu(hidden_output)
+
+		self.activations = hidden_output
 
 		if self.dropout > 0:
-			self.logits    = tf.matmul(tf.nn.dropout(leaky_relu(tf.matmul(hidden_input, W_hidden) + b_hidden), 1-self.dropout_var),
-									   W_output) + b_output
-		else:
-			self.logits    = tf.matmul(leaky_relu(tf.matmul(hidden_input, W_hidden) + b_hidden),
-									   W_output) + b_output
+			hidden_output = tf.nn.dropout(hidden_output, 1-self.dropout_var)
+
+		self.logits    = tf.matmul(hidden_output, W_output) + b_output
 
 		batch_loss 	   = tf.nn.sparse_softmax_cross_entropy_with_logits(self.logits, self.y_batch)
 		self.loss 	   = tf.reduce_mean(batch_loss)
@@ -296,10 +316,66 @@ class ConvNN(object):
 
 		return test_loss / num_batches
 
+	def visualize(self):
+
+		self.load()
+
+		all_predictions = np.array([])
+		all_labels      = np.array([])
+		all_activations = np.array([]).reshape(0, self.hidden_dim)
+
+		for X_batch, y_batch in data_iterator(self.X_test, self.y_test, self.batch_size):
+
+			feed = {self.X_batch: X_batch, self.y_batch: y_batch, self.dropout_var: self.dropout}
+
+			logits, activations = self.sess.run([self.logits, self.activations], feed)
+
+			all_activations = np.concatenate((all_activations, activations))
+
+			predictions = np.argmax(logits, 1)
+
+			all_predictions = np.concatenate((all_predictions, predictions))
+			all_labels      = np.concatenate((all_labels, y_batch))
+
+		best_positive_neurons = np.argpartition(sum(all_activations[1::2] == 1), -5)[-5:]
+		best_negative_neurons = np.argpartition(sum(all_activations[1::2] < 0.00001), -5)[-5:]
+
+		cm = confusion_matrix(all_predictions, all_labels)
+
+		plot_confusion_matrix.plot_confusion_matrix(cm, [str(i) for i in range(10)], self.model_directory)
+
+		with h5py.File(os.path.join(self.data_directory, "rotations.h5")) as h5f:
+			samples = h5f["X_train"][:]
+			samples = np.expand_dims(samples.reshape(samples.shape[0], self.voxel_dim, self.voxel_dim, self.voxel_dim), 4)
+			labels = h5f["y_train"][:]
+
+		for X_batch, y_batch in data_iterator(samples, labels, samples.shape[0]):
+
+			feed = {self.X_batch: X_batch, self.y_batch: y_batch, self.dropout_var: self.dropout}
+
+			activations, = self.sess.run([self.activations], feed)
+
+		positive = activations[:, best_positive_neurons]
+		negative = activations[:, best_negative_neurons]
+
+		plt.matshow(positive)
+		plt.title("Top 5 Positive Neuron Activations")
+		plt.xlabel("Neuron")
+		plt.ylabel("Type of Rotation")
+		plt.savefig("positive.png")
+		plt.close()
+		plt.matshow(negative)
+		plt.title("Top 5 Negative Neuron Activations")
+		plt.xlabel("Neuron")
+		plt.ylabel("Type of Rotation")
+		plt.savefig("negative.png")
+		plt.close()
 
 	def run(self):
 		if self.is_test:
 			self.test()
+		elif self.visuals:
+			self.visualize()
 		else:
 			self.train()
 
@@ -307,6 +383,7 @@ class ConvNN(object):
 		with open(self.outfile, 'a') as outfile:
 			print(" [*] Reading checkpoints...", file=outfile)
 			outfile.flush()
+		print(self.checkpoint_directory)
 		ckpt = tf.train.get_checkpoint_state(self.checkpoint_directory)
 		if ckpt and ckpt.model_checkpoint_path:
 			self.saver.restore(self.sess, ckpt.model_checkpoint_path)

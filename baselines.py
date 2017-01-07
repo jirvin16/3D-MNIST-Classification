@@ -45,8 +45,9 @@ def create_logistic_regression(params):
 		solver = 'liblinear'
 	return LogisticRegression(multi_class=multi_class, solver=solver)
 
-for voxel_dim in [8, 16, 32]:
-
+# for voxel_dim in [8, 16, 32]:
+for voxel_dim in [8, 16]:
+	
 	with h5py.File("input/final_data_{}.h5".format(voxel_dim)) as hf:
 		X_train = hf["X_train"][:]
 		y_train = hf["y_train"][:]
